@@ -591,7 +591,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         time.sleep(60)
 
     def disrupt_hard_reboot_node(self):
-        self.target_node.reboot(hard=True)
+        with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                            line="sstables::compaction_stopped_exception",
+                            node=self.target_node):
+            self.target_node.reboot(hard=True)
         self.log.info('Waiting scylla services to start after node reboot')
         self.target_node.wait_db_up()
         self.log.info('Waiting JMX services to start after node reboot')
@@ -610,7 +613,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 patterns=["cdc - Could not update CDC description table with generation"])
             cdc_success_msg = self.target_node.follow_system_log(
                 patterns=cdc_success_msg)
-            self.target_node.reboot(hard=True)
+            with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                line="sstables::compaction_stopped_exception",
+                                node=self.target_node):
+                self.target_node.reboot(hard=True)
             if random.choice([True, False]):
                 self.log.info('Waiting scylla services to start after node reboot')
                 self.target_node.wait_db_up()
@@ -635,7 +641,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             time.sleep(sleep_time)
 
     def disrupt_soft_reboot_node(self):
-        self.target_node.reboot(hard=False)
+        with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                            line="sstables::compaction_stopped_exception",
+                            node=self.target_node):
+            self.target_node.reboot(hard=False)
         self.log.info('Waiting scylla services to start after node reboot')
         self.target_node.wait_db_up()
         self.log.info('Waiting JMX services to start after node reboot')
@@ -701,7 +710,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             with node.remote_scylla_yaml() as scylla_yaml:
                 scylla_yaml.internode_compression = new_value
             self.log.info(f"Restarting node {node}")
-            node.restart_scylla_server()
+            with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                line="sstables::compaction_stopped_exception",
+                                node=node):
+                node.restart_scylla_server()
 
     def disrupt_restart_with_resharding(self):
         murmur3_partitioner_ignore_msb_bits = 15  # pylint: disable=invalid-name
@@ -860,7 +872,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 for key in ldap_config:
                     ldap_config[key] = getattr(scylla_yaml, key)
                     setattr(scylla_yaml, key, None)
-            node.restart_scylla_server()
+            with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                line="sstables::compaction_stopped_exception",
+                                node=node):
+                node.restart_scylla_server()
 
         if not ContainerManager.is_running(self.tester.localhost, 'ldap'):
             raise LdapNotRunning("LDAP server was supposed to be running, but it is not")
@@ -880,7 +895,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             node.refresh_ip_address()
             with node.remote_scylla_yaml() as scylla_yaml:
                 scylla_yaml.update(ldap_config)
-            node.restart_scylla_server()
+            with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                line="sstables::compaction_stopped_exception",
+                                node=node):
+                node.restart_scylla_server()
 
         InfoEvent(message='Re-enable LDAP Authorization Configuration').publish()
         create_ldap_container()
@@ -945,7 +963,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 test_keyspaces = self.cluster.get_test_keyspaces()
                 for node in self.cluster.nodes:
                     for keyspace in test_keyspaces:
-                        node.run_nodetool(sub_cmd='cleanup', args=keyspace)
+                        with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                            line="sstables::compaction_stopped_exception",
+                                            node=node):
+                            node.run_nodetool(sub_cmd='cleanup', args=keyspace)
             finally:
                 self.unset_current_running_nemesis(new_node)
         return new_node
@@ -1445,7 +1466,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         for node in self.cluster.nodes:
             InfoEvent('NodetoolCleanupMonkey %s' % node).publish()
             for keyspace in test_keyspaces:
-                node.run_nodetool(sub_cmd="cleanup", args=keyspace)
+                with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                    line="sstables::compaction_stopped_exception",
+                                    node=node):
+                    node.run_nodetool(sub_cmd="cleanup", args=keyspace)
 
     def _prepare_test_table(self, ks='keyspace1', table=None):
         ks_cfs = self.cluster.get_non_system_ks_cf_list(db_node=self.target_node)
@@ -2543,7 +2567,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 test_keyspaces = self.cluster.get_test_keyspaces()
                 for node in self.cluster.nodes:
                     for keyspace in test_keyspaces:
-                        node.run_nodetool(sub_cmd='cleanup', args=keyspace)
+                        with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                                            line="sstables::compaction_stopped_exception",
+                                            node=node):
+                            node.run_nodetool(sub_cmd='cleanup', args=keyspace)
             finally:
                 self.unset_current_running_nemesis(new_node)
 
@@ -2797,6 +2824,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                            node=self.target_node), \
             DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
                            line="got error in row level repair",
+                           node=self.target_node), \
+            DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                           line="sstables::compaction_stopped_exception",
                            node=self.target_node):
             self.target_node.reboot(hard=True, verify_ssh=True)
             streaming_thread.join(60)
