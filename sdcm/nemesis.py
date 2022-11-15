@@ -26,6 +26,7 @@ import re
 import time
 import traceback
 import json
+import uuid
 
 from typing import Any, List, Optional, Type, Tuple, Callable, Dict, Set, Union
 from functools import wraps, partial
@@ -36,6 +37,7 @@ from threading import Lock
 from types import MethodType  # pylint: disable=no-name-in-module
 
 from cassandra import ConsistencyLevel
+from cassandra.concurrent import execute_concurrent_with_args  # pylint: disable=no-name-in-module
 from invoke import UnexpectedExit
 from elasticsearch.exceptions import ConnectionTimeout as ElasticSearchConnectionTimeout
 from argus.db.db_types import NemesisStatus, NemesisRunInfo, NodeDescription
@@ -1731,24 +1733,66 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             for keyspace in test_keyspaces:
                 node.run_nodetool(sub_cmd="cleanup", args=keyspace)
 
-    def _prepare_test_table(self, ks='keyspace1', table=None):
-        ks_cfs = self.cluster.get_non_system_ks_cf_list(db_node=self.target_node)
-        table_exist = f'{ks}.{table}' in ks_cfs if table else True
+    def _prepare_test_table(self,
+                            ks: str = "keyspace1",
+                            table: str = "standard1",
+                            number_of_columns: int = 5,
+                            number_of_rows: int = 400000) -> None:
+        self.log.debug("Going to create a new keyspace `%s'...", ks)
+        self.tester.create_keyspace(
+            keyspace_name=ks,
+            replication_factor=self.tester.reliable_replication_factor,
+        )
 
-        test_keyspaces = self.cluster.get_test_keyspaces()
-        # if keyspace or table doesn't exist, create it by cassandra-stress
-        if ks not in test_keyspaces or not table_exist:
-            stress_cmd = "cassandra-stress write n=400000 cl=QUORUM -mode native cql3 " \
-                         f"-schema 'replication(factor={self.tester.reliable_replication_factor})' -log interval=5"
-            cs_thread = self.tester.run_stress_thread(
-                stress_cmd=stress_cmd, keyspace_name=ks, stop_test_on_failure=False, round_robin=True)
-            cs_thread.verify_results()
+        self.cluster.wait_for_schema_agreement()
+
+        self.log.debug("Going to create a new table `%s.%s'...", ks, table)
+        columns = {f'"C{index}"': "blob" for index in range(number_of_columns)}
+        self.tester.create_table(
+            name=table,
+            keyspace_name=ks,
+            key_type="blob",
+            read_repair=0.0,
+            compact_storage=True,
+            columns=columns,
+            scylla_encryption_options=self.tester.params.get("scylla_encryption_options"),
+            compaction=self.tester.params.get("compaction_strategy"),
+            sstable_size=self.tester.params.get("sstable_size"),
+        )
+
+        self.cluster.wait_for_schema_agreement()
+
+        self.log.debug("Populating table `%s.%s' with data...", ks, table)
+
+        if cores := self.cluster.nodes[0].cpu_cores:
+            max_workers = len(self.cluster.nodes) * cores * 3
+        else:
+            max_workers = 8
+
+        with self.cluster.cql_connection_patient(self.target_node) as session:
+            session.default_consistency_level = ConsistencyLevel.QUORUM
+
+            query_string = f"INSERT INTO {ks}.{table} " \
+                           f"(key,{','.join(columns)}) " \
+                           f"VALUES ({('?,' * (number_of_columns + 1)).rstrip(',')});"
+            prepared_insert_query = session.prepare(query=query_string)
+
+            values = []
+            for _ in range(number_of_rows):
+                values.append(tuple(f"0x{uuid.uuid1().hex}" for _ in range(number_of_columns + 1)))
+
+            execute_concurrent_with_args(
+                session=session,
+                statement=prepared_insert_query,
+                parameters=values,
+                concurrency=max_workers,
+            )
 
     def disrupt_truncate(self):
         keyspace_truncate = 'ks_truncate'
         table = 'standard1'
 
-        self._prepare_test_table(ks=keyspace_truncate)
+        self._prepare_test_table(ks=keyspace_truncate, table=table)
 
         # In order to workaround issue #4924 when truncate timeouts, we try to flush before truncate.
         self.target_node.run_nodetool("flush")
