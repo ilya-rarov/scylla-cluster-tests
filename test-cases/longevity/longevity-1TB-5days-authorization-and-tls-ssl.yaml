@@ -1,4 +1,4 @@
-test_duration: 7200
+test_duration: 240
 prepare_write_cmd: ["cassandra-stress write cl=QUORUM n=275050075 -schema 'replication(factor=3) compaction(strategy=LeveledCompactionStrategy)' -mode cql3 native -rate threads=150 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=1..275050075",
                     "cassandra-stress write cl=QUORUM n=275050075 -schema 'replication(factor=3) compaction(strategy=LeveledCompactionStrategy)' -mode cql3 native -rate threads=150 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=275050076..550100150",
                     "cassandra-stress write cl=QUORUM n=275050075 -schema 'replication(factor=3) compaction(strategy=LeveledCompactionStrategy)' -mode cql3 native -rate threads=150 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=550100151..825150225",
@@ -28,7 +28,7 @@ instance_type_loader: 'c5.4xlarge'
 gce_instance_type_loader: 'c2-standard-16'
 
 
-nemesis_class_name: 'SisyphusMonkey'
+nemesis_class_name: 'NonDisruptiveMonkey'
 nemesis_seed: '031'
 nemesis_interval: 30
 nemesis_filter_seeds: false

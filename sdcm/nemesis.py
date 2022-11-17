@@ -1443,9 +1443,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # prepare test tables and fill test data
         for i in range(10):
             self.log.debug('Prepare test tables if they do not exist')
-            self._prepare_test_table(ks=f'drop_table_during_repair_ks_{i}', table='standard1', pre_create_objects=True)
-
-            self.cluster.wait_for_schema_agreement()
+            self._prepare_test_table(ks=f'drop_table_during_repair_ks_{i}', table='standard1')
 
         self.log.debug("Start repair target_node in background")
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix='NodeToolRepairThread') as thread_pool:
@@ -1781,7 +1779,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
             values = []
             for _ in range(number_of_rows):
-                values.append(tuple(f"0x{uuid.uuid1().hex}" for _ in range(number_of_columns + 1)))
+                values.append(tuple(hex(uuid.uuid1().int) for _ in range(number_of_columns + 1)))
 
             execute_concurrent_with_args(
                 session=session,
@@ -4775,7 +4773,8 @@ class NonDisruptiveMonkey(Nemesis):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.disrupt_methods_list = self.get_list_of_methods_compatible_with_backend(disruptive=False)
+        # self.disrupt_methods_list = self.get_list_of_methods_compatible_with_backend(disruptive=False)
+        self.disrupt_methods_list = ["disrupt_no_corrupt_repair"]
 
     def disrupt(self):
         self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list)
