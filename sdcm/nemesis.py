@@ -178,6 +178,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     kubernetes: bool = False        # flag that signal that nemesis run with k8s cluster
     limited: bool = False           # flag that signal that nemesis are belong to limited set of nemesises
     has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
+    cloud_sanity: bool = False      # flag signaling that nemesis should be run as part of siren-tests sanity longevity
 
     def __init__(self, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
         for name, member in inspect.getmembers(self, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
@@ -3985,6 +3986,7 @@ class StopStartMonkey(Nemesis):
     disruptive = True
     kubernetes = True
     limited = True
+    cloud_sanity = True
 
     def disrupt(self):
         self.disrupt_stop_start_scylla_server()
@@ -4497,6 +4499,7 @@ class ToggleGcModeMonkey(Nemesis):
 class MgmtBackup(Nemesis):
     disruptive = False
     limited = True
+    cloud_sanity = True
 
     def disrupt(self):
         self.disrupt_mgmt_backup()
@@ -4514,6 +4517,7 @@ class MgmtRepair(Nemesis):
     disruptive = False
     kubernetes = True
     limited = True
+    cloud_sanity = True
 
     def disrupt(self):
         self.log.info('disrupt_mgmt_repair_cli Nemesis begin')
