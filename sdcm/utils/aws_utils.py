@@ -353,8 +353,15 @@ def ec2_instance_wait_public_ip(instance):
 
 
 def ec2_ami_get_root_device_name(image_id, region):
-    ec2 = boto3.resource('ec2', region)
-    image = ec2.Image(image_id)
+    images = []
+
+    ec2_resource = boto3.resource('ec2', region)
+
+    for client in [ec2_resource, get_scylla_images_ec2_resource(region_name=region)]:
+        for image in client.images.filter(ImageIds=[image_id]):
+            images.append(image)
+
+    image = images[0]
     try:
         if image.root_device_name:
             return image.root_device_name
